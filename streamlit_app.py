@@ -2,12 +2,13 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-st.set_page_config(page_title="Pro Wheel Bot", layout="wide")
-st.title("🛡️ The Wheel Strategy & Capital Planner")
+st.set_page_config(page_title="Growth Sniper Bot", layout="wide")
+st.title("🎯 High-Beta Stock Watchlist (Expanded)")
 
-# Sidebar
-tickers_input = st.sidebar.text_area("Watchlist", "TSLA, NVDA, AMD, PLTR, MSFT, COIN, MSTR")
-risk_dist = st.sidebar.slider("Strike Distance (Safety %)", 5, 20, 10)
+# Expanded Watchlist
+default_list = "TSLA, NVDA, AMD, PLTR, MSFT, COIN, MSTR, SMCI, ARM, SNOW, SHOP, SQ, META, GOOGL, AMZN, AVGO, NET, HOOD, SOFI, AI"
+tickers_input = st.sidebar.text_area("Watchlist", default_list)
+budget = st.sidebar.number_input("Your Total Budget ($)", value=10000)
 
 def calculate_rsi(data, window=14):
     delta = data.diff()
@@ -16,7 +17,7 @@ def calculate_rsi(data, window=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-def get_strategy(ticker):
+def get_stock_signal(ticker):
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="1mo")
@@ -24,38 +25,50 @@ def get_strategy(ticker):
         
         price = hist['Close'].iloc[-1]
         rsi = calculate_rsi(hist['Close']).iloc[-1]
-        info = stock.info
         
-        # Strategy Logic
+        # Risk Management: Max 10% of budget per stock
+        max_investment = budget * 0.10
+        shares_to_buy = int(max_investment / price)
+        
+        # Signals
         action = "HOLD"
-        strike = 0
-        capital = 0
-        
-        if rsi < 40:
-            action = "SELL PUT"
-            strike = price * (1 - (risk_dist/100))
-            capital = strike * 100 # Cash needed to back the put
-        elif rsi > 65:
-            action = "SELL CALL"
-            strike = price * (1 + (risk_dist/100))
-            capital = price * 100 # Value of 100 shares you must own
+        color = "white"
+        if rsi < 35: 
+            action = "🔥 BUY (Deep Dip)"
+        elif rsi < 45: 
+            action = "✅ BUY (Entry)"
+        elif rsi > 70: 
+            action = "🚨 SELL (Profit)"
             
         return {
             "Ticker": ticker,
-            "Price": f"${price:.2f}",
+            "Price": round(price, 2),
             "RSI": round(rsi, 1),
             "Action": action,
-            "Strike": round(strike, 2),
-            "Capital Req.": f"${int(capital):,}",
-            "Stop Loss": round(strike * 0.95 if rsi < 40 else strike * 1.05, 2)
+            "Shares": shares_to_buy,
+            "Investment": f"${int(shares_to_buy * price):,}"
         }
     except: return None
 
-if st.button("Calculate Capital & Signals"):
-    results = [get_strategy(t.strip().upper()) for t in tickers_input.split(",")]
-    results = [r for r in results if r]
+if st.button("Scan Market"):
+    results = []
+    t_list = [t.strip().upper() for t in tickers_input.split(",")]
+    
+    with st.spinner('Scanning 20+ High-Beta Stocks...'):
+        for t in t_list:
+            res = get_stock_signal(t)
+            if res: results.append(res)
     
     if results:
         df = pd.DataFrame(results)
-        st.dataframe(df, use_container_width=True)
-        st.info("💡 'Capital Req' is the cash needed for 1 Put contract or the value of 100 shares for a Covered Call.")
+        # Sort so the best buys are at the top
+        st.dataframe(df.sort_values("RSI"), use_container_width=True)
+        
+        # Mobile Summary
+        st.subheader("💡 Today's Best Setups")
+        buys = df[df['Action'].str.contains("BUY")]
+        if not buys.empty:
+            for _, row in buys.iterrows():
+                st.success(f"**{row['Ticker']}**: RSI {row['RSI']} - Buy {row['Shares']} shares (~{row['Investment']})")
+        else:
+            st.info("No deep dips found today. Patience is key!")
