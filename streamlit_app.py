@@ -1,8 +1,8 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
 
+# App Setup
 st.set_page_config(page_title="Pro Analyst Bot", layout="wide")
 st.title("🚀 High-Beta Signal Bot")
 
@@ -20,35 +20,36 @@ def calculate_rsi(data, window=14):
 def get_signals(ticker):
     try:
         stock = yf.Ticker(ticker)
-        # Get History for RSI
         hist = stock.history(period="1mo")
         if len(hist) < 15: return None
         
+        # Technicals
         current_rsi = calculate_rsi(hist['Close']).iloc[-1]
-        info = stock.info
         
-        # Fundamentals
+        # Volatility Check (High Vol = Higher Option Premiums)
+        # We check if today's range is wider than the 10-day average
+        daily_range = hist['High'].iloc[-1] - hist['Low'].iloc[-1]
+        avg_range = (hist['High'] - hist['Low']).tail(10).mean()
+        vol_status = "🔥 HIGH" if daily_range > avg_range else "Normal"
+        
+        info = stock.info
         beta = info.get('beta', 0)
         price = info.get('currentPrice', 0)
         
-        # Signal Logic
-        signal = "WAIT"
-        action_color = "white"
-        
+        # Logic for Entry/Exit
+        signal = "HOLD"
         if current_rsi < 40 and beta >= target_beta:
             signal = "ENTRY (Sell Put)"
-            action_color = "green"
         elif current_rsi > 65:
             signal = "EXIT (Sell Call)"
-            action_color = "red"
             
         return {
             "Ticker": ticker,
             "Price": f"${price:.2f}",
             "RSI": round(current_rsi, 1),
             "Beta": round(beta, 2),
-            "Signal": signal,
-            "Color": action_color
+            "Vol": vol_status,
+            "Signal": signal
         }
     except: return None
 
@@ -63,11 +64,18 @@ if st.button("Generate Signals"):
     if results:
         df = pd.DataFrame(results)
         
-        # Styling the table for mobile
+        # The FIX: Using .map instead of .applymap
         def color_signal(val):
-            color = 'green' if 'ENTRY' in val else 'red' if 'EXIT' in val else 'gray'
-            return f'color: {color}; font-weight: bold'
+            if 'ENTRY' in str(val): return 'color: #00ff00; font-weight: bold'
+            if 'EXIT' in str(val): return 'color: #ff4b4b; font-weight: bold'
+            return 'color: white'
 
-        st.table(df.style.applymap(color_signal, subset=['Signal']))
+        # Display as a clean table
+        st.dataframe(df.style.map(color_signal, subset=['Signal']), use_container_width=True)
         
-        st.info("💡 Tip: For 'ENTRY' signals, look for Cash-Secured Puts. For 'EXIT' signals, look for Covered Calls.")
+        st.markdown("""
+        ### 💡 How to use these signals:
+        1. **ENTRY (Sell Put):** Price is dipping on a high-volatility stock. Perfect time to start 'The Wheel' and collect high premiums.
+        2. **EXIT (Sell Call):** Stock is overextended. Sell a Covered Call to lock in gains or prepare for a pullback.
+        3. **Vol 🔥 HIGH:** Means option prices are extra expensive today—great for sellers!
+        """)
