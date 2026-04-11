@@ -26,8 +26,7 @@ def get_signals(ticker):
         # Technicals
         current_rsi = calculate_rsi(hist['Close']).iloc[-1]
         
-        # Volatility Check (High Vol = Higher Option Premiums)
-        # We check if today's range is wider than the 10-day average
+        # Volatility Check
         daily_range = hist['High'].iloc[-1] - hist['Low'].iloc[-1]
         avg_range = (hist['High'] - hist['Low']).tail(10).mean()
         vol_status = "🔥 HIGH" if daily_range > avg_range else "Normal"
@@ -64,18 +63,21 @@ if st.button("Generate Signals"):
     if results:
         df = pd.DataFrame(results)
         
-        # The FIX: Using .map instead of .applymap
-        def color_signal(val):
-            if 'ENTRY' in str(val): return 'color: #00ff00; font-weight: bold'
-            if 'EXIT' in str(val): return 'color: #ff4b4b; font-weight: bold'
-            return 'color: white'
-
-        # Display as a clean table
-        st.dataframe(df.style.map(color_signal, subset=['Signal']), use_container_width=True)
+        # Display as a clean, standard dataframe to avoid Styler errors
+        st.dataframe(df, use_container_width=True)
+        
+        # Manual color indicators for mobile readability
+        st.markdown("### 🚦 Signal Summary")
+        for index, row in df.iterrows():
+            if "ENTRY" in row['Signal']:
+                st.success(f"**{row['Ticker']}**: {row['Signal']} (Price: {row['Price']})")
+            elif "EXIT" in row['Signal']:
+                st.error(f"**{row['Ticker']}**: {row['Signal']} (Price: {row['Price']})")
         
         st.markdown("""
-        ### 💡 How to use these signals:
-        1. **ENTRY (Sell Put):** Price is dipping on a high-volatility stock. Perfect time to start 'The Wheel' and collect high premiums.
-        2. **EXIT (Sell Call):** Stock is overextended. Sell a Covered Call to lock in gains or prepare for a pullback.
-        3. **Vol 🔥 HIGH:** Means option prices are extra expensive today—great for sellers!
+        ---
+        ### 💡 Analyst Strategy Notes:
+        1. **ENTRY (Sell Put):** Stock is oversold. Premiums are high.
+        2. **EXIT (Sell Call):** Stock is overbought. Lock in gains.
+        3. **Vol 🔥 HIGH:** The 'Vegas' is high—options are more profitable to sell today.
         """)
